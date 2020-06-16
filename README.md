@@ -75,7 +75,6 @@ The nf-core/sarek pipeline comes with documentation about the pipeline, found in
     * [Complementary information about ASCAT](docs/ascat.md)
     * [Complementary information about Sentieon](docs/sentieon.md)
     * [Extra documentation on annotation](docs/annotation.md)
-    * [Downstream processing, ranking, and connection to Scout](docs/downstream.md)
 5. [Troubleshooting](https://nf-co.re/usage/troubleshooting)
 
 ## Credits
@@ -129,7 +128,7 @@ For further information or help, don't hesitate to get in touch on [Slack](https
 
 ## Acknowledgements
 
-[![Barntumörbanken](docs/images/BTB_logo.png)](https://ki.se/forskning/barntumorbanken-0) | [![SciLifeLab](docs/images/SciLifeLab_logo.png)](https://scilifelab.se)
+[![Barntumörbanken](docs/images/BTB_logo.png)](https://ki.se/forskning/barntumorbanken) | [![SciLifeLab](docs/images/SciLifeLab_logo.png)](https://scilifelab.se)
 :-:|:-:
 [![National Genomics Infrastructure](docs/images/NGI_logo.png)](https://ngisweden.scilifelab.se/) | [![National Bioinformatics Infrastructure Sweden](docs/images/NBIS_logo.png)](https://nbis.se)
 
