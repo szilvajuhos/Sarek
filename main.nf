@@ -101,6 +101,8 @@ def helpMessage() {
                                       See: https://software.broadinstitute.org/gatk/documentation/tooldocs/current/org_broadinstitute_hellbender_tools_walkers_mutect_CreateSomaticPanelOfNormals.php
       --pon_index              [file] Index of pon panel-of-normals VCF
                                       If none provided, will be generated automatically from the PON
+      --vsqr                   [bool] Do variant score quality recalibration
+                                      Default: ${params.vsqr}
 
     Annotation:
       --annotate_tools          [str] Specify from which tools Sarek should look for VCF files to annotate, only for step Annotate
@@ -2554,7 +2556,32 @@ process ConcatVCF {
     """
 }
 
+(vcfToVSQR, vcfConcatenated) = vcfConcatenated.into(2)
 vcfConcatenated = vcfConcatenated.dump(tag:'VCF')
+
+if(params.vsqr && 'haplotypecaller' in tools) {
+  log.info "Applying VSQR to germline calls"
+}
+
+process Haplotyper_VSRQ {
+    label 'cpus_1'
+
+    tag "${idSample}"
+    publishDir "${params.outdir}/VariantCalling/${idSample}/HaplotypeCaller", mode: params.publish_dir_mode
+
+    input:
+      set variantCaller, idPatient, idSample, file(vcf) from vcfToVSQR
+
+    output:
+      set val("HaplotypeCaller"), idPatient, idSample, file("*.vsqr.vcf"), file("*.vsqr.vcf.tbi") into vcfHaplotypeCallerVSQR
+
+    when 'haplotypecaller' in tools && params.vsqr
+    script:
+    """
+    echo "Eljen II Rakoczi Feco!" > HaplotypeCaller_${idSample}_vsqr.vcf
+    touch HaplotypeCaller_${idSample}_vsqr.vcf.tbi
+    """
+}
 
 // STEP MERGING VCF - GATK MUTECT2 (UNFILTERED)
 
