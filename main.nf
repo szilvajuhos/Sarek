@@ -614,7 +614,10 @@ if ('controlfreec' in tools) {
     if (params.cf_ploidy)    summary['ploidy']                 = params.cf_ploidy
 }
 
-if ('haplotypecaller' in tools)             summary['GVCF']       = params.no_gvcf ? 'No' : 'Yes'
+if ('haplotypecaller' in tools) {
+    summary['GVCF']       = params.no_gvcf ? 'No' : 'Yes'
+    summary['VSQR']       = params.vsqr ? 'Yes' : 'No'
+}
 if ('strelka' in tools && 'manta' in tools) summary['Strelka BP'] = params.no_strelka_bp ? 'No' : 'Yes'
 if (params.pon && ('mutect2' in tools || (params.sentieon && 'tnscope' in tools))) summary['Panel of normals'] = params.pon
 
@@ -2560,7 +2563,7 @@ process ConcatVCF {
 vcfConcatenated = vcfConcatenated.dump(tag:'VCF')
 
 if(params.vsqr && 'haplotypecaller' in tools) {
-  log.info "Applying VSQR to germline calls"
+  log.info "Applying VSQR to HaplotypeCaller calls"
 }
 
 process Haplotyper_VSRQ {
@@ -2570,10 +2573,10 @@ process Haplotyper_VSRQ {
     publishDir "${params.outdir}/VariantCalling/${idSample}/HaplotypeCaller", mode: params.publish_dir_mode
 
     input:
-      set variantCaller, idPatient, idSample, file(vcf) from vcfToVSQR
+      set variantCaller, idPatient, idSample, file(vcf), file(vcfidx) from vcfToVSQR
 
     output:
-      set val("HaplotypeCaller"), idPatient, idSample, file("*.vsqr.vcf"), file("*.vsqr.vcf.tbi") into vcfHaplotypeCallerVSQR
+      set val("HaplotypeCaller"), idPatient, idSample, file("*_vsqr.vcf"), file("*_vsqr.vcf.tbi") into vcfHaplotypeCallerVSQR
 
     when 'haplotypecaller' in tools && params.vsqr
     script:
