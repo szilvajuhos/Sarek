@@ -539,6 +539,7 @@ ch_dbsnp = params.dbsnp && ('mapping' in step || 'preparerecalibration' in step 
 ch_fasta = params.fasta && !('annotate' in step) ? Channel.value(file(params.fasta)) : "null"
 ch_fai = params.fasta_fai && !('annotate' in step) ? Channel.value(file(params.fasta_fai)) : "null"
 ch_germline_resource = params.germline_resource && 'mutect2' in tools ? Channel.value(file(params.germline_resource)) : "null"
+ch_hapmap = params.hapmap && params.vsqr && 'haplotypecaller' in tools ? Channel.value(file(params.hapmap)) : "null"
 ch_intervals = params.intervals && !params.no_intervals && !('annotate' in step) ? Channel.value(file(params.intervals)) : "null"
 ch_known_indels = params.known_indels && ('mapping' in step || 'preparerecalibration' in step) ? Channel.value(file(params.known_indels)) : "null"
 ch_mappability = params.mappability && 'controlfreec' in tools ? Channel.value(file(params.mappability)) : "null"
@@ -862,6 +863,28 @@ process BuildDbsnpIndex {
 }
 
 ch_dbsnp_tbi = params.dbsnp ? params.dbsnp_index ? Channel.value(file(params.dbsnp_index)) : dbsnp_tbi : "null"
+
+process BuildHapmapIndex {
+    tag "${hapmap}"
+
+    publishDir params.outdir, mode: params.publish_dir_mode,
+        saveAs: {params.save_reference ? "reference_genome/${it}" : null }
+
+    input:
+        file(hapmap) from ch_hapmap
+
+    output:
+        file("${hapmap}.tbi") into hapmap_tbi
+
+    when: !(params.hapmap_index) && params.hapmap && params.vsqr && 'haplotypecaller' in tools
+
+    script:
+    """
+    tabix -p vcf ${hapmap}
+    """
+}
+
+ch_hapmap_tbi = params.hapmap ? params.hapmap_index ? Channel.value(file(params.hapmap_index)) : hapmap_tbi : "null"
 
 process BuildGermlineResourceIndex {
     tag "${germlineResource}"
@@ -2573,16 +2596,41 @@ process Haplotyper_VSRQ {
     publishDir "${params.outdir}/VariantCalling/${idSample}/HaplotypeCaller", mode: params.publish_dir_mode
 
     input:
-      set variantCaller, idPatient, idSample, file(vcf), file(vcfidx) from vcfToVSQR
+        set variantCaller, idPatient, idSample, file(vcf), file(vcfidx) from vcfToVSQR
+        file(fasta) from ch_fasta
+        file(fastaFai) from ch_fai
+        file(dict) from ch_dict
+        file(dbsnp) from ch_dbsnp
+        file(dbsnpIndex) from ch_dbsnp_tbi
+        file(hapmap) from ch_hapmap
+        file(hapmapIndex) from ch_hapmap_tbi
 
     output:
-      set val("HaplotypeCaller"), idPatient, idSample, file("*_vsqr.vcf"), file("*_vsqr.vcf.tbi") into vcfHaplotypeCallerVSQR
+      set val("HaplotypeCaller"), idPatient, idSample, file("*_vsqr.vcf.gz"), file("*_vsqr.vcf.gz.tbi") into vcfHaplotypeCallerVSQR
 
     when 'haplotypecaller' in tools && params.vsqr
     script:
     """
-    echo "Eljen II Rakoczi Feco!" > HaplotypeCaller_${idSample}_vsqr.vcf
-    touch HaplotypeCaller_${idSample}_vsqr.vcf.tbi
+    # SNP recalibration
+    gatk VariantRecalibrator \
+      -R ${fasta} \
+      -V ${vcf} \
+      --resource:hapmap,known=false,training=true,truth=true,prior=15.0 ${hapmap} \
+      --resource:dbsnp,known=true,training=false,truth=false,prior=2.0 ${dbsnp} \
+      -an QD -an MQ -an MQRankSum -an ReadPosRankSum -an FS -an SOR \
+      -mode SNP \
+      -O VQSR.SNP.${vcf} \
+      --tranches-file ${vcf}.VQSR.SNP.tranches \
+      --rscript-file ${vcf}.SNP.plots.R      # needs r-ggplot2 conda package
+
+    gatk ApplyVQSR \
+      -R ${fasta} \
+      -V ${vcf} \
+      -O ${vcf}.SNP_vsqr.vcf.gz \
+      --truth-sensitivity-filter-level 99.0 \
+      --tranches-file  ${vcf}.VQSR.SNP.tranches \
+      --recal-file ${vcf}.VQSR.SNP.recal.vcf \
+      -mode SNP
     """
 }
 
