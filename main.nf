@@ -2629,7 +2629,7 @@ process Haplotyper_VSRQ {
       -O ${vcf}.SNP_vsqr.vcf.gz \
       --truth-sensitivity-filter-level 99.0 \
       --tranches-file  ${vcf}.VQSR.SNP.tranches \
-      --recal-file ${vcf}.VQSR.SNP.recal.vcf \
+      --recal-file VQSR.SNP.${vcf} \
       -mode SNP
     """
 }
