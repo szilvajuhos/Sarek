@@ -541,7 +541,7 @@ ch_fai = params.fasta_fai && !('annotate' in step) ? Channel.value(file(params.f
 ch_germline_resource = params.germline_resource && 'mutect2' in tools ? Channel.value(file(params.germline_resource)) : "null"
 ch_hapmap = params.hapmap && params.vsqr && 'haplotypecaller' in tools ? Channel.value(file(params.hapmap)) : "null"
 ch_intervals = params.intervals && !params.no_intervals && !('annotate' in step) ? Channel.value(file(params.intervals)) : "null"
-ch_known_indels = params.known_indels && ('mapping' in step || 'preparerecalibration' in step) ? Channel.value(file(params.known_indels)) : "null"
+ch_known_indels = params.known_indels && ('mapping' in step || 'preparerecalibration' in step || params.vsqr) ? Channel.value(file(params.known_indels)) : "null"
 ch_mappability = params.mappability && 'controlfreec' in tools ? Channel.value(file(params.mappability)) : "null"
 
 ch_snpeff_cache = params.snpeff_cache ? Channel.value(file(params.snpeff_cache)) : "null"
@@ -2602,6 +2602,8 @@ process Haplotyper_VSRQ {
         file(dict) from ch_dict
         file(dbsnp) from ch_dbsnp
         file(dbsnpIndex) from ch_dbsnp_tbi
+        file(known_indels) from ch_known_indels
+        file(known_indels_index) from ch_known_indels_tbi
         file(hapmap) from ch_hapmap
         file(hapmapIndex) from ch_hapmap_tbi
 
@@ -2626,11 +2628,36 @@ process Haplotyper_VSRQ {
     gatk ApplyVQSR \
       -R ${fasta} \
       -V ${vcf} \
-      -O ${vcf}.SNP_vsqr.vcf.gz \
+      -O ${vcf}.SNP.recalibrated.vcf.gz \
       --truth-sensitivity-filter-level 99.0 \
       --tranches-file  ${vcf}.VQSR.SNP.tranches \
       --recal-file VQSR.SNP.${vcf} \
       -mode SNP
+
+    # now the INDEL recalibration part
+
+    gatk VariantRecalibrator \
+      -R ${fasta} \
+      -V ${vcf}.SNP.recalibrated.vcf.gz \
+      --resource:mills,known=false,training=true,truth=true,prior=12.0 ${ch_known_indels} \
+      --resource:dbsnp,known=true,training=false,truth=false,prior=2.0 ${dbsnp} \
+      -an DP -an FS -an QD -an SOR -an MQRankSum -an ReadPosRankSum \
+      -mode INDEL \
+      -O VQSR.SNP.INDEL.${vcf} \
+      --tranches-file ${vcf}.VQSR.INDEL.tranches \
+      --rscript-file ${vcf}.INDEL.plots.R
+
+    # generate filename - assuming input is vcf.gz
+    VQSR_VCF=`basename -s vcf.gz ${vcf}`
+    
+    gatk ApplyVQSR \
+      -R ${fasta} \
+      -V ${vcf}.SNP.recalibrated.vcf.gz \
+      -O \${VQSR_VCF} \
+      --truth-sensitivity-filter-level 99.0 \
+      --tranches-file  ${vcf}.VQSR.INDEL.tranches \
+      --recal-file VQSR.SNP.INDEL.${vcf} \
+      -mode INDEL
     """
 }
 
