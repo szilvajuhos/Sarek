@@ -2589,7 +2589,7 @@ if(params.vsqr && 'haplotypecaller' in tools) {
   log.info "Applying VSQR to HaplotypeCaller calls"
 }
 
-process Haplotyper_VSRQ {
+process Haplotyper_VSRQ_SNP_VariantRecalibrator { 
     label 'cpus_1'
 
     tag "${idSample}"
@@ -2599,68 +2599,121 @@ process Haplotyper_VSRQ {
         set variantCaller, idPatient, idSample, file(vcf), file(vcfidx) from vcfToVSQR
         file(fasta) from ch_fasta
         file(fastaFai) from ch_fai
-        file(dict) from ch_dict
+       file(dict) from ch_dict
         file(dbsnp) from ch_dbsnp
         file(dbsnpIndex) from ch_dbsnp_tbi
         file(known_indels) from ch_known_indels
         file(known_indels_index) from ch_known_indels_tbi
         file(hapmap) from ch_hapmap
         file(hapmapIndex) from ch_hapmap_tbi
+        file(intervals) from ch_intervals
 
     output:
-      set val("HaplotypeCaller"), idPatient, idSample, file("*_vsqr.vcf.gz"), file("*_vsqr.vcf.gz.tbi") into vcfHaplotypeCallerVSQR
+      set file("*.VQSR.SNP.tranches"), file("*.SNP.plots.R"), file("*.SNP.plots.R.pdf")
+      set val("HaplotypeCaller"), idPatient, idSample, file(vcf), file(vcfidx), file("*.VQSR.SNP.tranches"), file("VSQR.SNP.*vcf.gz"), file("VSQR.SNP.*vcf.gz.tbi") into vcfHaplotypeCallerSNPVSQR
 
     when 'haplotypecaller' in tools && params.vsqr
     script:
     """
-    # SNP recalibration
+    # SNP recalibration - R code needs the r-ggplot2 conda package
     gatk VariantRecalibrator \
       -R ${fasta} \
       -V ${vcf} \
+      -L ${intervals} \
       --resource:hapmap,known=false,training=true,truth=true,prior=15.0 ${hapmap} \
       --resource:dbsnp,known=true,training=false,truth=false,prior=2.0 ${dbsnp} \
       -an QD -an MQ -an MQRankSum -an ReadPosRankSum -an FS -an SOR \
       -mode SNP \
-      -O VQSR.SNP.${vcf} \
+      -O VSQR.SNP.${vcf} \
       --tranches-file ${vcf}.VQSR.SNP.tranches \
-      --rscript-file ${vcf}.SNP.plots.R      # needs r-ggplot2 conda package
+      --rscript-file ${vcf}.SNP.plots.R
+    touch junk
+    """
+}
 
+process Haplotyper_ApplyVSRQ_SNPs { 
+    label 'cpus_1'
+
+    tag "${idSample}"
+    publishDir "${params.outdir}/VariantCalling/${idSample}/HaplotypeCaller", mode: params.publish_dir_mode
+
+    input:
+        set variantCaller, idPatient, idSample, file(vcf), file(vcfIdx), file(tranches), file(recalVcf), file(recalVcfIdx) from vcfHaplotypeCallerSNPVSQR
+        file(fasta) from ch_fasta
+        file(fastaFai) from ch_fai
+        file(dict) from ch_dict
+
+    output:
+      set val("HaplotypeCaller"), idPatient, idSample, file("*.SNP.recalibrated.vcf.gz"), file("*.SNP.recalibrated.vcf.gz.tbi") into haplotypeCallerSNPRecalibratedVSQR
+    
+    when 'haplotypecaller' in tools && params.vsqr
+    script:
+    """
     gatk ApplyVQSR \
       -R ${fasta} \
       -V ${vcf} \
       -O ${vcf}.SNP.recalibrated.vcf.gz \
       --truth-sensitivity-filter-level 99.0 \
-      --tranches-file  ${vcf}.VQSR.SNP.tranches \
-      --recal-file VQSR.SNP.${vcf} \
+      --tranches-file ${tranches} \
+      --recal-file ${recalVcf} \
       -mode SNP
-
-    # now the INDEL recalibration part
-
-    gatk VariantRecalibrator \
-      -R ${fasta} \
-      -V ${vcf}.SNP.recalibrated.vcf.gz \
-      --resource:mills,known=false,training=true,truth=true,prior=12.0 ${ch_known_indels} \
-      --resource:dbsnp,known=true,training=false,truth=false,prior=2.0 ${dbsnp} \
-      -an DP -an FS -an QD -an SOR -an MQRankSum -an ReadPosRankSum \
-      -mode INDEL \
-      -O VQSR.SNP.INDEL.${vcf} \
-      --tranches-file ${vcf}.VQSR.INDEL.tranches \
-      --rscript-file ${vcf}.INDEL.plots.R
-
-    # generate filename - assuming input is vcf.gz
-    VQSR_VCF=`basename -s vcf.gz ${vcf}`
-    
-    gatk ApplyVQSR \
-      -R ${fasta} \
-      -V ${vcf}.SNP.recalibrated.vcf.gz \
-      -O \${VQSR_VCF} \
-      --truth-sensitivity-filter-level 99.0 \
-      --tranches-file  ${vcf}.VQSR.INDEL.tranches \
-      --recal-file VQSR.SNP.INDEL.${vcf} \
-      -mode INDEL
     """
 }
 
+////process Haplotyper_VSRQ_Indel_VariantRecalibrator { }
+////process Haplotyper_ApplyVSRQ_Indels { }
+//
+//process Haplotyper_VSRQ {
+//    label 'cpus_1'
+//
+//    tag "${idSample}"
+//    publishDir "${params.outdir}/VariantCalling/${idSample}/HaplotypeCaller", mode: params.publish_dir_mode
+//
+//    input:
+//        set variantCaller, idPatient, idSample, file(vcf), file(vcfidx) from vcfToVSQR
+//        file(fasta) from ch_fasta
+//        file(fastaFai) from ch_fai
+//        file(dict) from ch_dict
+//        file(dbsnp) from ch_dbsnp
+//        file(dbsnpIndex) from ch_dbsnp_tbi
+//        file(known_indels) from ch_known_indels
+//        file(known_indels_index) from ch_known_indels_tbi
+//        file(hapmap) from ch_hapmap
+//        file(hapmapIndex) from ch_hapmap_tbi
+//
+//    output:
+//      set val("HaplotypeCaller"), idPatient, idSample, file("*_vsqr.vcf.gz"), file("*_vsqr.vcf.gz.tbi") into vcfHaplotypeCallerVSQR
+//
+//    when 'haplotypecaller' in tools && params.vsqr
+//    script:
+//    """
+//    # now the INDEL recalibration part
+//
+//    gatk VariantRecalibrator \
+//      -R ${fasta} \
+//      -V ${vcf}.SNP.recalibrated.vcf.gz \
+//      --resource:mills,known=false,training=true,truth=true,prior=12.0 ${ch_known_indels} \
+//      --resource:dbsnp,known=true,training=false,truth=false,prior=2.0 ${dbsnp} \
+//      -an DP -an FS -an QD -an SOR -an MQRankSum -an ReadPosRankSum \
+//      -mode INDEL \
+//      -O VQSR.SNP.INDEL.${vcf} \
+//      --tranches-file ${vcf}.VQSR.INDEL.tranches \
+//      --rscript-file ${vcf}.INDEL.plots.R
+//
+//    # generate filename - assuming input is vcf.gz
+//    VQSR_VCF=`basename -s vcf.gz ${vcf}`
+//    
+//    gatk ApplyVQSR \
+//      -R ${fasta} \
+//      -V ${vcf}.SNP.recalibrated.vcf.gz \
+//      -O \${VQSR_VCF} \
+//      --truth-sensitivity-filter-level 99.0 \
+//      --tranches-file  ${vcf}.VQSR.INDEL.tranches \
+//      --recal-file VQSR.SNP.INDEL.${vcf} \
+//      -mode INDEL
+//    """
+//}
+//
 // STEP MERGING VCF - GATK MUTECT2 (UNFILTERED)
 
 mutect2Output = mutect2Output.dump(tag:'Mutect2 output VCF to merge')
