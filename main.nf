@@ -2407,7 +2407,7 @@ vcfFreeBayes = vcfFreeBayes.groupTuple(by:[0,1,2])
 process Mutect2 {
     tag "${idSampleTumor}_vs_${idSampleNormal}-${intervalBed.baseName}"
 
-    label 'cpus_1'
+    label 'cpus_2'
 
     input:
         set idPatient, idSampleNormal, file(bamNormal), file(baiNormal), idSampleTumor, file(bamTumor), file(baiTumor), file(intervalBed) from pairBamMutect2
