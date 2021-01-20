@@ -99,8 +99,8 @@ def helpMessage() {
                                           See: https://software.broadinstitute.org/gatk/documentation/tooldocs/current/org_broadinstitute_hellbender_tools_walkers_mutect_CreateSomaticPanelOfNormals.php
       --pon_index                  [file] Index of pon panel-of-normals VCF
                                           If none provided, will be generated automatically from the PON
-      --vsqr                   [bool] Do variant score quality recalibration
-                                      Default: ${params.vsqr}
+      --vqsr                   [bool] Do variant score quality recalibration
+                                      Default: ${params.vqsr}
       --ignore_soft_clipped_bases  [bool] Do not analyze soft clipped bases in the reads for GATK Mutect2
                                           Default: Do not use
       --umi                        [bool] If provided, UMIs steps will be run to extract and annotate the reads with UMI and create consensus reads
@@ -337,10 +337,10 @@ params.fasta_fai = params.genome && params.fasta ? params.genomes[params.genome]
 params.germline_resource = params.genome && 'mutect2' in tools ? params.genomes[params.genome].germline_resource ?: null : null
 params.germline_resource_index = params.genome && params.germline_resource ? params.genomes[params.genome].germline_resource_index ?: null : null
 params.intervals = params.genome && !('annotate' in step) ? params.genomes[params.genome].intervals ?: null : null
-params.known_indels = params.genome && ('mapping' in step || 'preparerecalibration' in step || params.vsqr) ? params.genomes[params.genome].known_indels ?: null : null
+params.known_indels = params.genome && ('mapping' in step || 'preparerecalibration' in step || params.vqsr) ? params.genomes[params.genome].known_indels ?: null : null
 params.known_indels_index = params.genome && params.known_indels ? params.genomes[params.genome].known_indels_index ?: null : null
-params.hapmap = params.genome && params.vsqr ? params.genomes[params.genome].hapmap ?: null : null
-params.hapmap_index = params.genome && params.vsqr ? params.genomes[params.genome].hapmap_index ?: null : null
+params.hapmap = params.genome && params.vqsr ? params.genomes[params.genome].hapmap ?: null : null
+params.hapmap_index = params.genome && params.vqsr ? params.genomes[params.genome].hapmap_index ?: null : null
 params.mappability = params.genome && 'controlfreec' in tools ? params.genomes[params.genome].mappability ?: null : null
 params.snpeff_db = params.genome && ('snpeff' in tools || 'merge' in tools) ? params.genomes[params.genome].snpeff_db ?: null : null
 params.species = params.genome && ('vep' in tools || 'merge' in tools) ? params.genomes[params.genome].species ?: null : null
@@ -355,9 +355,9 @@ ch_dbsnp = params.dbsnp && ('mapping' in step || 'preparerecalibration' in step 
 ch_fasta = params.fasta && !('annotate' in step) ? Channel.value(file(params.fasta)) : "null"
 ch_fai = params.fasta_fai && !('annotate' in step) ? Channel.value(file(params.fasta_fai)) : "null"
 ch_germline_resource = params.germline_resource && 'mutect2' in tools ? Channel.value(file(params.germline_resource)) : "null"
-ch_hapmap = params.hapmap && params.vsqr && 'haplotypecaller' in tools ? Channel.value(file(params.hapmap)) : "null"
+ch_hapmap = params.hapmap && params.vqsr && 'haplotypecaller' in tools ? Channel.value(file(params.hapmap)) : "null"
 ch_intervals = params.intervals && !params.no_intervals && !('annotate' in step) ? Channel.value(file(params.intervals)) : "null"
-ch_known_indels = params.known_indels && ('mapping' in step || 'preparerecalibration' in step || params.vsqr) ? Channel.value(file(params.known_indels)) : "null"
+ch_known_indels = params.known_indels && ('mapping' in step || 'preparerecalibration' in step || params.vqsr) ? Channel.value(file(params.known_indels)) : "null"
 ch_mappability = params.mappability && 'controlfreec' in tools ? Channel.value(file(params.mappability)) : "null"
 
 // Initialize channels with values based on params
@@ -438,7 +438,7 @@ if ('controlfreec' in tools) {
 
 if ('haplotypecaller' in tools) {
     summary['GVCF']       = params.no_gvcf ? 'No' : 'Yes'
-    summary['VSQR']       = params.vsqr ? 'Yes' : 'No'
+    summary['VQSR']       = params.vqsr ? 'Yes' : 'No'
 }
 if ('strelka' in tools && 'manta' in tools) summary['Strelka BP'] = params.no_strelka_bp ? 'No' : 'Yes'
 if (params.pon && ('mutect2' in tools || (params.sentieon && 'tnscope' in tools))) summary['Panel of normals'] = params.pon
@@ -699,7 +699,7 @@ process BuildHapmapIndex {
     output:
         file("${hapmap}.tbi") into hapmap_tbi
 
-    when: !(params.hapmap_index) && params.hapmap && params.vsqr && 'haplotypecaller' in tools
+    when: !(params.hapmap_index) && params.hapmap && params.vqsr && 'haplotypecaller' in tools
 
     script:
     """
@@ -2550,14 +2550,14 @@ process ConcatVCF {
     """
 }
 
-(vcfToVSQR, vcfConcatenated) = vcfConcatenated.into(2)
+(vcfToVQSR, vcfConcatenated) = vcfConcatenated.into(2)
 vcfConcatenated = vcfConcatenated.dump(tag:'VCF')
 
-if(params.vsqr && 'haplotypecaller' in tools) {
-  log.info "Applying VSQR to HaplotypeCaller calls"
+if(params.vqsr && 'haplotypecaller' in tools) {
+  log.info "Applying VQSR to HaplotypeCaller calls"
 }
 
-if(params.vsqr && 'haplotypecaller' in tools) { log.info "Known indels " + ch_known_indels + " or " + params.known_indels}
+if(params.vqsr && 'haplotypecaller' in tools) { log.info "Known indels " + ch_known_indels + " or " + params.known_indels}
 
 process Haplotyper_VSRQ_SNP_VariantRecalibrator { 
     label 'cpus_1'
@@ -2566,7 +2566,7 @@ process Haplotyper_VSRQ_SNP_VariantRecalibrator {
     publishDir "${params.outdir}/VariantCalling/${idSample}/HaplotypeCaller", mode: params.publish_dir_mode
 
     input:
-        set variantCaller, idPatient, idSample, file(vcf), file(vcfidx) from vcfToVSQR
+        set variantCaller, idPatient, idSample, file(vcf), file(vcfidx) from vcfToVQSR
         file(fasta) from ch_fasta
         file(fastaFai) from ch_fai
        file(dict) from ch_dict
@@ -2580,9 +2580,9 @@ process Haplotyper_VSRQ_SNP_VariantRecalibrator {
 
     output:
       set file("*.VQSR.SNP.tranches"), file("*.SNP.plots.R"), file("*.SNP.plots.R.pdf")
-      set val("HaplotypeCaller"), idPatient, idSample, file(vcf), file(vcfidx), file("*.VQSR.SNP.tranches"), file("VSQR.SNP.*vcf.gz"), file("VSQR.SNP.*vcf.gz.tbi") into vcfHaplotypeCallerSNPVSQR
+      set val("HaplotypeCaller"), idPatient, idSample, file(vcf), file(vcfidx), file("*.VQSR.SNP.tranches"), file("VQSR.SNP.*vcf.gz"), file("VQSR.SNP.*vcf.gz.tbi") into vcfHaplotypeCallerSNPVQSR
 
-    when 'haplotypecaller' in tools && params.vsqr
+    when 'haplotypecaller' in tools && params.vqsr
     script:
     """
     # SNP recalibration - R code needs the r-ggplot2 conda package
@@ -2594,7 +2594,7 @@ process Haplotyper_VSRQ_SNP_VariantRecalibrator {
       --resource:dbsnp,known=true,training=false,truth=false,prior=2.0 ${dbsnp} \
       -an QD -an MQ -an MQRankSum -an ReadPosRankSum -an FS -an SOR \
       -mode SNP \
-      -O VSQR.SNP.${vcf} \
+      -O VQSR.SNP.${vcf} \
       --tranches-file ${vcf}.VQSR.SNP.tranches \
       --rscript-file ${vcf}.SNP.plots.R
     touch junk
@@ -2608,15 +2608,15 @@ process Haplotyper_ApplyVSRQ_SNPs {
     publishDir "${params.outdir}/VariantCalling/${idSample}/HaplotypeCaller", mode: params.publish_dir_mode
 
     input:
-        set variantCaller, idPatient, idSample, file(vcf), file(vcfIdx), file(tranches), file(recalVcf), file(recalVcfIdx) from vcfHaplotypeCallerSNPVSQR
+        set variantCaller, idPatient, idSample, file(vcf), file(vcfIdx), file(tranches), file(recalVcf), file(recalVcfIdx) from vcfHaplotypeCallerSNPVQSR
         file(fasta) from ch_fasta
         file(fastaFai) from ch_fai
         file(dict) from ch_dict
 
     output:
-      set val("HaplotypeCaller"), idPatient, idSample, file(vcf), file(vcfIdx), file("*.SNP.recalibrated.vcf.gz"), file("*.SNP.recalibrated.vcf.gz.tbi") into haplotypeCallerSNPRecalibratedVSQR
+      set val("HaplotypeCaller"), idPatient, idSample, file(vcf), file(vcfIdx), file("*.SNP.recalibrated.vcf.gz"), file("*.SNP.recalibrated.vcf.gz.tbi") into haplotypeCallerSNPRecalibratedVQSR
     
-    when 'haplotypecaller' in tools && params.vsqr
+    when 'haplotypecaller' in tools && params.vqsr
     script:
     """
     gatk ApplyVQSR \
@@ -2629,7 +2629,7 @@ process Haplotyper_ApplyVSRQ_SNPs {
       -mode SNP
     """
 }
-if(params.vsqr && 'haplotypecaller' in tools) { log.info "Known indels " + ch_known_indels }
+if(params.vqsr && 'haplotypecaller' in tools) { log.info "Known indels " + ch_known_indels }
 
 process Haplotyper_VSRQ_Indel_VariantRecalibrator { 
     label 'cpus_1'
@@ -2638,7 +2638,7 @@ process Haplotyper_VSRQ_Indel_VariantRecalibrator {
     publishDir "${params.outdir}/VariantCalling/${idSample}/HaplotypeCaller", mode: params.publish_dir_mode
 
     input:
-      set variantCaller, idPatient, idSample, file(vcf), file(vcfIdx), file(vcfSNPrecalibrated), file(vcfSNPrecalibratedIdx) from haplotypeCallerSNPRecalibratedVSQR
+      set variantCaller, idPatient, idSample, file(vcf), file(vcfIdx), file(vcfSNPrecalibrated), file(vcfSNPrecalibratedIdx) from haplotypeCallerSNPRecalibratedVQSR
       file(fasta) from ch_fasta
       file(fastaFai) from ch_fai
       file(dict) from ch_dict
@@ -2648,13 +2648,25 @@ process Haplotyper_VSRQ_Indel_VariantRecalibrator {
       file(known_indels_index) from ch_known_indels_tbi
     output:
       set file("*.VQSR.INDEL.tranches"), file("*.INDEL.plots.R"), file("*.INDEL.plots.R.pdf")
-      set variantCaller, idPatient, idSample, file(vcf), file(vcfIdx), file("VQSR.SNP.INDEL.*vcf.gz"), file("VQSR.SNP.INDEL.*vcf.gz.tbi"), file(vcfSNPrecalibrated), file(vcfSNPrecalibratedIdx), file("*.VQSR.INDEL.tranches") into vcfHaplotypeCallerIndelVSQR 
+      set variantCaller, 
+          idPatient, 
+          idSample, 
+          file(vcf), 
+          file(vcfIdx), 
+          file("VQSR.SNP.INDEL.*vcf.gz"), 
+          file("VQSR.SNP.INDEL.*vcf.gz.tbi"), 
+          file(vcfSNPrecalibrated), 
+          file(vcfSNPrecalibratedIdx), 
+          file("*.VQSR.INDEL.tranches") into vcfHaplotypeCallerIndelVQSR 
 
-    when 'haplotypecaller' in tools && params.vsqr
+    when 'haplotypecaller' in tools && params.vqsr
     script:
     """
+    # there are one or more known indels file - we have to split the channel if we are going to use more
+    # same happens at BaseRecalibrator, maybe we have TODO DRY with DSL2
+    #knownOptions = params.known_indels ? knownIndels.collect{"--resource ${it}"}.join(' ') : ""
     # now the INDEL recalibration part
-    gatk VariantRecalibrator \
+gatk VariantRecalibrator \
       -R ${fasta} \
       -V ${vcfSNPrecalibrated} \
       --resource:mills,known=false,training=true,truth=true,prior=12.0 ${known_indels} \
@@ -2674,15 +2686,15 @@ process Haplotyper_ApplyVSRQ_Indels {
     publishDir "${params.outdir}/VariantCalling/${idSample}/HaplotypeCaller", mode: params.publish_dir_mode
 
     input:
-        set variantCaller, idPatient, idSample, file(vcf), file(vcfidx), file(recalVcf), file(recalVcfIdx), file(vcfSNPrecalibrated), file(vcfSNPrecalibratedIdx), file(tranches) from vcfHaplotypeCallerIndelVSQR
+        set variantCaller, idPatient, idSample, file(vcf), file(vcfidx), file(recalVcf), file(recalVcfIdx), file(vcfSNPrecalibrated), file(vcfSNPrecalibratedIdx), file(tranches) from vcfHaplotypeCallerIndelVQSR
         file(fasta) from ch_fasta
         file(fastaFai) from ch_fai
         file(dict) from ch_dict
 
     output:
-      set variantCaller, idPatient, idSample, file("*_vsqr.vcf.gz"), file("*_vsqr.vcf.gz.tbi") into vcfHaplotypeCallerVSQR
+      set variantCaller, idPatient, idSample, file("*_vqsr.vcf.gz"), file("*_vqsr.vcf.gz.tbi") into vcfHaplotypeCallerVQSR
 
-    when 'haplotypecaller' in tools && params.vsqr
+    when 'haplotypecaller' in tools && params.vqsr
     script:
     """
     # generate filename - assuming input is vcf.gz
@@ -2691,7 +2703,7 @@ process Haplotyper_ApplyVSRQ_Indels {
     gatk ApplyVQSR \
       -R ${fasta} \
       -V ${vcfSNPrecalibrated} \
-      -O \${VQSR_VCF}_vsqr.vcf.gz \
+      -O \${VQSR_VCF}_vqsr.vcf.gz \
       --truth-sensitivity-filter-level 99.0 \
       --tranches-file ${tranches} \
       --recal-file ${recalVcf} \
